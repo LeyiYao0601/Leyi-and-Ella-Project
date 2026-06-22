@@ -1,0 +1,701 @@
+---
+title: "Data exploration and cleaning for COVID-19 Cohort Waves 1-3"
+output: html_document
+date: "2026-06-14"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This rmd audits the structure and data quality of the three UCL COVID-19 survey wave files：
+Wave 1 took place in May 2020. Wave 2 took place in September and October 2020. Wave 3 took place in February and March 2021. Wave 2 and Wave 3 store the completion day and month in separate variables.
+
+
+##Read datasets and library
+
+```{r}
+library(tidyverse)
+library(haven)
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(knitr)
+library(lme4)
+
+raw_data_folder <- "/Users/leyi/Desktop/DNP/Longitudual /project"
+
+wave1_file <- file.path(
+  raw_data_folder,
+  "covid-19_wave1_survey_cls.dta"
+)
+
+wave2_file <- file.path(
+  raw_data_folder,
+  "covid-19_wave2_survey_cls.dta"
+)
+
+wave3_file <- file.path(
+  raw_data_folder,
+  "covid-19_wave3_survey_cls.dta"
+)
+
+lookup_file <- file.path(
+  raw_data_folder,
+  "covid-19_w1-3_variable_lookup.xlsx"
+)
+
+wave1 <- read_dta(wave1_file)
+wave2 <- read_dta(wave2_file)
+wave3 <- read_dta(wave3_file)
+
+variable_lookup <- read_excel(lookup_file)
+
+```
+
+# Dataset Structure
+
+```{r file-summary}
+file_summary <- data.frame(
+  wave = c("Wave 1", "Wave 2", "Wave 3"),
+  rows = c(nrow(wave1), nrow(wave2), nrow(wave3)),
+  columns = c(ncol(wave1), ncol(wave2), ncol(wave3))
+)
+
+kable(file_summary)
+# The current data are stored as separate wave-specific files. Each file is wide within wave: one row per participant response and many wave-prefixed variables.
+```
+# Participant Identifiers
+The study combines several birth cohorts. The identifier used depends on the participant's cohort:
+NCDSID identifies NCDS participants.
+BCSID identifies BCS70 participants.
+NSID identifies Next Steps participants.
+MCSID identifies an MCS family or household.
+CW1_PNUM00, CW2_PNUM00, and CW3_PNUM00 distinguish people within MCS
+households.
+Blank character values are treated as missing in the following counts.
+```{r}
+identifier_table <- data.frame(
+  wave = rep(c("Wave 1", "Wave 2", "Wave 3"), each = 4),
+  id_variable = rep(c("NCDSID", "BCSID", "NSID", "MCSID"), times = 3),
+  non_missing = c(
+    sum(trimws(wave1$NCDSID) != ""),
+    sum(trimws(wave1$BCSID) != ""),
+    sum(trimws(wave1$NSID) != ""),
+    sum(trimws(wave1$MCSID) != ""),
+    sum(trimws(wave2$NCDSID) != ""),
+    sum(trimws(wave2$BCSID) != ""),
+    sum(trimws(wave2$NSID) != ""),
+    sum(trimws(wave2$MCSID) != ""),
+    sum(trimws(wave3$NCDSID) != ""),
+    sum(trimws(wave3$BCSID) != ""),
+    sum(trimws(wave3$NSID) != ""),
+    sum(trimws(wave3$MCSID) != "")
+  ),
+  unique_non_missing = c(
+    n_distinct(wave1$NCDSID[trimws(wave1$NCDSID) != ""]),
+    n_distinct(wave1$BCSID[trimws(wave1$BCSID) != ""]),
+    n_distinct(wave1$NSID[trimws(wave1$NSID) != ""]),
+    n_distinct(wave1$MCSID[trimws(wave1$MCSID) != ""]),
+    n_distinct(wave2$NCDSID[trimws(wave2$NCDSID) != ""]),
+    n_distinct(wave2$BCSID[trimws(wave2$BCSID) != ""]),
+    n_distinct(wave2$NSID[trimws(wave2$NSID) != ""]),
+    n_distinct(wave2$MCSID[trimws(wave2$MCSID) != ""]),
+    n_distinct(wave3$NCDSID[trimws(wave3$NCDSID) != ""]),
+    n_distinct(wave3$BCSID[trimws(wave3$BCSID) != ""]),
+    n_distinct(wave3$NSID[trimws(wave3$NSID) != ""]),
+    n_distinct(wave3$MCSID[trimws(wave3$MCSID) != ""])
+  )
+)
+
+kable(identifier_table)
+```
+###A temporary participant key is created in memory for audit purposes. The cohort name is included to prevent the same number in different cohorts being treated as the same person. MCS uses both household ID and person number
+
+```{r}
+wave1 <- wave1 |>
+  mutate(
+    participant_id = case_when(
+      CW1_COHORT == 1 ~ paste0("NCDS_", NCDSID),
+      CW1_COHORT == 2 ~ paste0("BCS_", BCSID),
+      CW1_COHORT == 3 ~ paste0("NS_", NSID),
+      CW1_COHORT %in% c(4, 5) ~ paste0("MCS_", MCSID, "_", CW1_PNUM00),
+      TRUE ~ NA_character_
+    )
+  )
+
+wave2 <- wave2 |>
+  mutate(
+    participant_id = case_when(
+      CW2_COHORT == 1 ~ paste0("NCDS_", NCDSID),
+      CW2_COHORT == 2 ~ paste0("BCS_", BCSID),
+      CW2_COHORT == 3 ~ paste0("NS_", NSID),
+      CW2_COHORT %in% c(4, 5) ~ paste0("MCS_", MCSID, "_", CW2_PNUM00),
+      TRUE ~ NA_character_
+    )
+  )
+
+wave3 <- wave3 |>
+  mutate(
+    participant_id = case_when(
+      CW3_COHORT == 1 ~ paste0("NCDS_", NCDSID),
+      CW3_COHORT == 2 ~ paste0("BCS_", BCSID),
+      CW3_COHORT == 3 ~ paste0("NS_", NSID),
+      CW3_COHORT %in% c(4, 5) ~ paste0("MCS_", MCSID, "_", CW3_PNUM00),
+      TRUE ~ NA_character_
+    )
+  )
+```
+
+#Number of waves and attritions
+```{r}
+wave1_ids <- wave1 |>
+  select(participant_id) |>
+  filter(!is.na(participant_id)) |>
+  distinct() |>
+  mutate(wave1 = TRUE)
+
+wave2_ids <- wave2 |>
+  select(participant_id) |>
+  filter(!is.na(participant_id)) |>
+  distinct() |>
+  mutate(wave2 = TRUE)
+
+wave3_ids <- wave3 |>
+  select(participant_id) |>
+  filter(!is.na(participant_id)) |>
+  distinct() |>
+  mutate(wave3 = TRUE)
+
+participation <- full_join(wave1_ids, wave2_ids, by = "participant_id")
+participation <- full_join(participation, wave3_ids, by = "participant_id")
+
+participation <- participation |>
+  mutate(
+    wave1 = replace_na(wave1, FALSE),
+    wave2 = replace_na(wave2, FALSE),
+    wave3 = replace_na(wave3, FALSE),
+    participation_pattern = paste0(
+      as.integer(wave1),
+      as.integer(wave2),
+      as.integer(wave3)
+    )
+  )
+
+attrition_table <- participation |>
+  count(participation_pattern, name = "participants") |>
+  arrange(participation_pattern)
+
+kable(attrition_table)
+
+#The pattern 111 means that the key appears in all three files. The pattern 100 means Wave 1 only, while 011 means Waves 2 and 3 only.
+```
+
+#Measurement Timing
+Wave 1 contains a completion-day variable. Wave 2 and Wave 3 contain separate day and month variables.
+```{r}
+timing_table <- data.frame(
+  wave = c("Wave 1", "Wave 2", "Wave 2", "Wave 3", "Wave 3"),
+  timing_variable = c(
+    "CW1_ENDDATE",
+    "CW2_ENDDATED",
+    "CW2_ENDDATEM",
+    "CW3_ENDDATED",
+    "CW3_ENDDATEM"
+  ),
+  non_missing = c(
+    sum(!is.na(wave1$CW1_ENDDATE)),
+    sum(!is.na(wave2$CW2_ENDDATED)),
+    sum(!is.na(wave2$CW2_ENDDATEM)),
+    sum(!is.na(wave3$CW3_ENDDATED)),
+    sum(!is.na(wave3$CW3_ENDDATEM))
+  ),
+  unique_values = c(
+    n_distinct(wave1$CW1_ENDDATE, na.rm = TRUE),
+    n_distinct(wave2$CW2_ENDDATED, na.rm = TRUE),
+    n_distinct(wave2$CW2_ENDDATEM, na.rm = TRUE),
+    n_distinct(wave3$CW3_ENDDATED, na.rm = TRUE),
+    n_distinct(wave3$CW3_ENDDATEM, na.rm = TRUE)
+  ),
+  minimum = c(
+    min(wave1$CW1_ENDDATE, na.rm = TRUE),
+    min(wave2$CW2_ENDDATED, na.rm = TRUE),
+    min(wave2$CW2_ENDDATEM, na.rm = TRUE),
+    min(wave3$CW3_ENDDATED, na.rm = TRUE),
+    min(wave3$CW3_ENDDATEM, na.rm = TRUE)
+  ),
+  maximum = c(
+    max(wave1$CW1_ENDDATE, na.rm = TRUE),
+    max(wave2$CW2_ENDDATED, na.rm = TRUE),
+    max(wave2$CW2_ENDDATEM, na.rm = TRUE),
+    max(wave3$CW3_ENDDATED, na.rm = TRUE),
+    max(wave3$CW3_ENDDATEM, na.rm = TRUE)
+  )
+)
+
+kable(timing_table)
+#The Wave 2 month values should be 9 and 10. The Wave 3 month values should be 2 and 3. Wave 1 is documented as May, so CW1_ENDDATE is interpreted as the day of May rather than as a complete date.
+```
+
+#Planned Variables and Constructs
+```{r}
+construct_table <- data.frame(
+  construct = c(
+    "Depression items",
+    "Anxiety items",
+    "Loneliness items",
+    "Life satisfaction",
+    "Social contact",
+    "Social support",
+    "Financial strain"
+  ),
+  Wave_1 = c(
+    "CW1_GAD2PHQ2_3, CW1_GAD2PHQ2_4",
+    "CW1_GAD2PHQ2_1, CW1_GAD2PHQ2_2",
+    "CW1_LONELY_1 to CW1_LONELY_4",
+    "CW1_SATN",
+    "CW1_SCON1 to CW1_SCON5",
+    "CW1_SOCPROV_1 to CW1_SOCPROV_3, CW1_SICK, CW1_LISTEN",
+    "CW1_FINANCIALMANB, CW1_FINANCIALMAND"
+  ),
+  Wave_2 = c(
+    "CW2_GAD2PHQ2_3, CW2_GAD2PHQ2_4",
+    "CW2_GAD2PHQ2_1, CW2_GAD2PHQ2_2",
+    "CW2_LONELY_1 to CW2_LONELY_4",
+    "CW2_SATN",
+    "CW2_SCON1 to CW2_SCON5",
+    "CW2_SOCPROV_1 to CW2_SOCPROV_3, CW2_SICK, CW2_LISTEN",
+    "CW2_FINANCIALMANB, CW2_FINANCIALMAND"
+  ),
+  Wave_3 = c(
+    "CW3_GAD2PHQ2_3, CW3_GAD2PHQ2_4",
+    "CW3_GAD2PHQ2_1, CW3_GAD2PHQ2_2",
+    "CW3_LONELY_1 to CW3_LONELY_4",
+    "CW3_SATN",
+    "CW3_SCON1 to CW3_SCON5",
+    "CW3_SOCPROV_1 to CW3_SOCPROV_3, CW3_SICK, CW3_LISTEN",
+    "CW3_FINANCIALMANB, CW3_FINANCIALMAND"
+  )
+)
+
+kable(construct_table)
+```
+# Cleaning the planned variables
+The data dictionaries show that negative values are special codes rather than real responses:
+-1 means not applicable.
+-8 means no information or do not know.
+-9 means does not want to answer.
+The small function below changes any negative code to NA. Positive responses are kept unchanged.
+```{r}
+remove_special_codes <- function(x) {
+  x <- as.numeric(x)
+  x[x < 0] <- NA
+  return(x)
+}
+```
+
+The variables are now selected and renamed one wave at a time. This repetition is intentional so that the source of each variable remains visible.
+```{r}
+wave1_analysis <- wave1 |>
+  transmute(
+    participant_id = participant_id,
+    wave = "Wave 1",
+    depression_item1 = remove_special_codes(CW1_GAD2PHQ2_3),
+    depression_item2 = remove_special_codes(CW1_GAD2PHQ2_4),
+    anxiety_item1 = remove_special_codes(CW1_GAD2PHQ2_1),
+    anxiety_item2 = remove_special_codes(CW1_GAD2PHQ2_2),
+    loneliness_item1 = remove_special_codes(CW1_LONELY_1),
+    loneliness_item2 = remove_special_codes(CW1_LONELY_2),
+    loneliness_item3 = remove_special_codes(CW1_LONELY_3),
+    loneliness_item4 = remove_special_codes(CW1_LONELY_4),
+    contact_item1 = remove_special_codes(CW1_SCON1),
+    contact_item2 = remove_special_codes(CW1_SCON2),
+    contact_item3 = remove_special_codes(CW1_SCON3),
+    contact_item4 = remove_special_codes(CW1_SCON4),
+    contact_item5 = remove_special_codes(CW1_SCON5),
+    support_item1 = remove_special_codes(CW1_SOCPROV_1),
+    support_item2 = remove_special_codes(CW1_SOCPROV_2),
+    support_item3 = remove_special_codes(CW1_SOCPROV_3),
+    support_when_sick = remove_special_codes(CW1_SICK),
+    support_for_listening = remove_special_codes(CW1_LISTEN),
+    life_satisfaction = remove_special_codes(CW1_SATN),
+    financial_management = remove_special_codes(CW1_FINANCIALMANB),
+    financial_change = remove_special_codes(CW1_FINANCIALMAND),
+    sex = remove_special_codes(CW1_PSEX),
+    cohort = remove_special_codes(CW1_COHORT)
+  )
+```
+
+```{r}
+wave2_analysis <- wave2 |>
+  transmute(
+    participant_id = participant_id,
+    wave = "Wave 2",
+    depression_item1 = remove_special_codes(CW2_GAD2PHQ2_3),
+    depression_item2 = remove_special_codes(CW2_GAD2PHQ2_4),
+    anxiety_item1 = remove_special_codes(CW2_GAD2PHQ2_1),
+    anxiety_item2 = remove_special_codes(CW2_GAD2PHQ2_2),
+    loneliness_item1 = remove_special_codes(CW2_LONELY_1),
+    loneliness_item2 = remove_special_codes(CW2_LONELY_2),
+    loneliness_item3 = remove_special_codes(CW2_LONELY_3),
+    loneliness_item4 = remove_special_codes(CW2_LONELY_4),
+    contact_item1 = remove_special_codes(CW2_SCON1),
+    contact_item2 = remove_special_codes(CW2_SCON2),
+    contact_item3 = remove_special_codes(CW2_SCON3),
+    contact_item4 = remove_special_codes(CW2_SCON4),
+    contact_item5 = remove_special_codes(CW2_SCON5),
+    support_item1 = remove_special_codes(CW2_SOCPROV_1),
+    support_item2 = remove_special_codes(CW2_SOCPROV_2),
+    support_item3 = remove_special_codes(CW2_SOCPROV_3),
+    support_when_sick = remove_special_codes(CW2_SICK),
+    support_for_listening = remove_special_codes(CW2_LISTEN),
+    life_satisfaction = remove_special_codes(CW2_SATN),
+    financial_management = remove_special_codes(CW2_FINANCIALMANB),
+    financial_change = remove_special_codes(CW2_FINANCIALMAND),
+    sex = remove_special_codes(CW2_PSEX),
+    cohort = remove_special_codes(CW2_COHORT)
+  )
+```
+
+```{r}
+wave3_analysis <- wave3 |>
+  transmute(
+    participant_id = participant_id,
+    wave = "Wave 3",
+    depression_item1 = remove_special_codes(CW3_GAD2PHQ2_3),
+    depression_item2 = remove_special_codes(CW3_GAD2PHQ2_4),
+    anxiety_item1 = remove_special_codes(CW3_GAD2PHQ2_1),
+    anxiety_item2 = remove_special_codes(CW3_GAD2PHQ2_2),
+    loneliness_item1 = remove_special_codes(CW3_LONELY_1),
+    loneliness_item2 = remove_special_codes(CW3_LONELY_2),
+    loneliness_item3 = remove_special_codes(CW3_LONELY_3),
+    loneliness_item4 = remove_special_codes(CW3_LONELY_4),
+    contact_item1 = remove_special_codes(CW3_SCON1),
+    contact_item2 = remove_special_codes(CW3_SCON2),
+    contact_item3 = remove_special_codes(CW3_SCON3),
+    contact_item4 = remove_special_codes(CW3_SCON4),
+    contact_item5 = remove_special_codes(CW3_SCON5),
+    support_item1 = remove_special_codes(CW3_SOCPROV_1),
+    support_item2 = remove_special_codes(CW3_SOCPROV_2),
+    support_item3 = remove_special_codes(CW3_SOCPROV_3),
+    support_when_sick = remove_special_codes(CW3_SICK),
+    support_for_listening = remove_special_codes(CW3_LISTEN),
+    life_satisfaction = remove_special_codes(CW3_SATN),
+    financial_management = remove_special_codes(CW3_FINANCIALMANB),
+    financial_change = remove_special_codes(CW3_FINANCIALMAND),
+    sex = remove_special_codes(CW3_PSEX),
+    cohort = remove_special_codes(CW3_COHORT)
+  )
+```
+
+# Provisional scale scores
+These scores are for checking distributions only. Final definitions should be confirmed against the questionnaire and published scoring guidance before modelling.
+The PHQ-2 and GAD-2 responses are stored as 1 to 4. Subtracting 1 converts each item to the conventional 0 to 3 range.
+The contact items are stored as 1 = every day and 5 = never. Subtracting each item from 6 makes a higher score represent more frequent contact.
+For the three Social Provisions items, the first two are positively worded and the third is negatively worded. They are recoded so that a higher total represents more perceived support. SICK and LISTEN are kept as separate support indicators because they use a different response scale.
+```{r}
+wave1_analysis <- wave1_analysis |>
+  mutate(
+    depression_score = (depression_item1 - 1) + (depression_item2 - 1),
+    anxiety_score = (anxiety_item1 - 1) + (anxiety_item2 - 1),
+    loneliness_score = loneliness_item1 + loneliness_item2 +
+      loneliness_item3 + loneliness_item4,
+    social_contact_score = (6 - contact_item1) + (6 - contact_item2) +
+      (6 - contact_item3) + (6 - contact_item4) + (6 - contact_item5),
+    social_support_score = (4 - support_item1) + (4 - support_item2) +
+      support_item3
+  )
+
+wave2_analysis <- wave2_analysis |>
+  mutate(
+    depression_score = (depression_item1 - 1) + (depression_item2 - 1),
+    anxiety_score = (anxiety_item1 - 1) + (anxiety_item2 - 1),
+    loneliness_score = loneliness_item1 + loneliness_item2 +
+      loneliness_item3 + loneliness_item4,
+    social_contact_score = (6 - contact_item1) + (6 - contact_item2) +
+      (6 - contact_item3) + (6 - contact_item4) + (6 - contact_item5),
+    social_support_score = (4 - support_item1) + (4 - support_item2) +
+      support_item3
+  )
+
+wave3_analysis <- wave3_analysis |>
+  mutate(
+    depression_score = (depression_item1 - 1) + (depression_item2 - 1),
+    anxiety_score = (anxiety_item1 - 1) + (anxiety_item2 - 1),
+    loneliness_score = loneliness_item1 + loneliness_item2 +
+      loneliness_item3 + loneliness_item4,
+    social_contact_score = (6 - contact_item1) + (6 - contact_item2) +
+      (6 - contact_item3) + (6 - contact_item4) + (6 - contact_item5),
+    social_support_score = (4 - support_item1) + (4 - support_item2) +
+      support_item3
+  )
+```
+
+# Outcome Distributions
+
+The three cleaned wave datasets are placed underneath each other for descriptive tables. This creates a long dataset with one row per response record per wave.
+```{r}
+analysis_long <- bind_rows(
+  wave1_analysis,
+  wave2_analysis,
+  wave3_analysis
+)
+
+score_data <- analysis_long |>
+  select(
+    wave,
+    depression_score,
+    anxiety_score,
+    loneliness_score,
+    social_contact_score,
+    social_support_score
+  ) |>
+  pivot_longer(
+    cols = -wave,
+    names_to = "variable",
+    values_to = "value"
+  )
+
+outcome_summary <- score_data |>
+  group_by(wave, variable) |>
+  summarise(
+    n = sum(!is.na(value)),
+    missing_n = sum(is.na(value)),
+    mean = mean(value, na.rm = TRUE),
+    standard_deviation = sd(value, na.rm = TRUE),
+    minimum = min(value, na.rm = TRUE),
+    p25 = quantile(value, 0.25, na.rm = TRUE),
+    median = median(value, na.rm = TRUE),
+    p75 = quantile(value, 0.75, na.rm = TRUE),
+    maximum = max(value, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+kable(outcome_summary, digits = 2)
+
+```
+##Histogram
+```{r}
+ggplot(score_data, aes(x = value)) +
+  geom_histogram(binwidth = 1, colour = "white", fill = "#3B82A0") +
+  facet_grid(variable ~ wave, scales = "free") +
+  labs(
+    x = "Score",
+    y = "Number of responses"
+  ) +
+  theme_minimal()
+```
+
+# Time-Varying and Time-Invariant Variables
+Variables beginning with CW1_, CW2_, or CW3_ are wave-specific and may
+change over time. The four unprefixed cohort identifiers are intended to link records across waves. Sex and cohort appear in each wave and should be checked for agreement before being treated as time-invariant covariates.
+```{r}
+wave1_prefixed <- sum(grepl("^CW1_", names(wave1)))
+wave1_unprefixed <- ncol(wave1) - wave1_prefixed - 1
+#The subtraction of 1 removes the temporary participant_id created during this report. It is not part of the original data.
+
+wave2_prefixed <- sum(grepl("^CW2_", names(wave2)))
+wave2_unprefixed <- ncol(wave2) - wave2_prefixed - 1
+
+wave3_prefixed <- sum(grepl("^CW3_", names(wave3)))
+wave3_unprefixed <- ncol(wave3) - wave3_prefixed - 1
+
+variable_type_table <- data.frame(
+  wave = c("Wave 1", "Wave 2", "Wave 3"),
+  unprefixed_variables = c(
+    wave1_unprefixed,
+    wave2_unprefixed,
+    wave3_unprefixed
+  ),
+  wave_prefixed_variables = c(
+    wave1_prefixed,
+    wave2_prefixed,
+    wave3_prefixed
+  )
+)
+
+kable(variable_type_table)
+```
+
+#Duplicate observations
+Duplicate checks use the temporary cross-cohort participant key. A duplicate row here means that the same key appears more than once within one wave file.
+```{r}
+wave1_duplicate_rows <- sum(duplicated(wave1$participant_id))
+wave2_duplicate_rows <- sum(duplicated(wave2$participant_id))
+wave3_duplicate_rows <- sum(duplicated(wave3$participant_id))
+
+wave1_duplicate_ids <- wave1 |>
+  count(participant_id) |>
+  filter(n > 1) |>
+  nrow()
+
+wave2_duplicate_ids <- wave2 |>
+  count(participant_id) |>
+  filter(n > 1) |>
+  nrow()
+
+wave3_duplicate_ids <- wave3 |>
+  count(participant_id) |>
+  filter(n > 1) |>
+  nrow()
+
+duplicate_table <- data.frame(
+  wave = c("Wave 1", "Wave 2", "Wave 3"),
+  id_variable = "temporary participant_id",
+  duplicate_rows = c(
+    wave1_duplicate_rows,
+    wave2_duplicate_rows,
+    wave3_duplicate_rows
+  ),
+  duplicate_ids = c(
+    wave1_duplicate_ids,
+    wave2_duplicate_ids,
+    wave3_duplicate_ids
+  )
+)
+
+kable(duplicate_table)
+#These records should be inspected using survey outcome, cohort, household, and person-number variables before any record is removed. No duplicate is deleted in this audit. waiting for suggetion?
+```
+
+#Missingness
+Missingness is examined after negative special codes have been changed to NA. The table below focuses on variables relevant to the planned analysis.
+
+-single imputation? if thats only around 3% (e-resources Mice)
+- some of them need multiple imputation?
+predict with other variable disturbation of other variables 
+
+```{r}
+missing_data <- analysis_long |>
+  select(
+    wave,
+    depression_item1,
+    depression_item2,
+    anxiety_item1,
+    anxiety_item2,
+    loneliness_item1,
+    loneliness_item2,
+    loneliness_item3,
+    loneliness_item4,
+    support_item1,
+    support_item2,
+    support_item3,
+    support_when_sick,
+    support_for_listening,
+    life_satisfaction,
+    financial_management,
+    financial_change,
+    depression_score,
+    anxiety_score,
+    loneliness_score,
+    social_contact_score,
+    social_support_score
+  ) |>
+  pivot_longer(
+    cols = -wave,
+    names_to = "variable",
+    values_to = "value"
+  )
+
+missingness_table <- missing_data |>
+  group_by(wave, variable) |>
+  summarise(
+    total_n = n(),
+    missing_n = sum(is.na(value)),
+    missing_percent = 100 * missing_n / total_n,
+    .groups = "drop"
+  ) |>
+  arrange(wave, desc(missing_percent))
+
+kable(missingness_table, digits = 1)
+
+```
+Before choosing a method, the next stages should examine:
+-whether missingness is caused by questionnaire routing;
+-whether missingness differs by wave, cohort, sex, or earlier responses;
+-whether complete cases differ from incomplete cases;
+-which variables should predict missing values;
+-whether a multilevel multiple-imputation method is needed for repeated data. 
+Multiple imputation with mice may be considered later. It should be specified and diagnosed as part of the modelling plan, not automatically applied because a variable exceeds or falls below a fixed percentage of missingness.
+
+# Possible coding errors
+The negative values observed in the original files are documented missing-value codes. This table counts them in the planned item variables before cleaning.
+```{r}
+wave1_planned_names <- c(
+  "CW1_GAD2PHQ2_1", "CW1_GAD2PHQ2_2",
+  "CW1_GAD2PHQ2_3", "CW1_GAD2PHQ2_4",
+  "CW1_LONELY_1", "CW1_LONELY_2", "CW1_LONELY_3", "CW1_LONELY_4",
+  "CW1_SCON1", "CW1_SCON2", "CW1_SCON3", "CW1_SCON4", "CW1_SCON5",
+  "CW1_SOCPROV_1", "CW1_SOCPROV_2", "CW1_SOCPROV_3",
+  "CW1_SICK", "CW1_LISTEN", "CW1_SATN",
+  "CW1_FINANCIALMANB", "CW1_FINANCIALMAND"
+)
+
+wave2_planned_names <- sub("CW1_", "CW2_", wave1_planned_names)
+wave3_planned_names <- sub("CW1_", "CW3_", wave1_planned_names)
+
+wave1_negative_codes <- wave1 |>
+  select(all_of(wave1_planned_names)) |>
+  pivot_longer(everything(), names_to = "variable", values_to = "value") |>
+  filter(value < 0) |>
+  count(variable, name = "negative_codes") |>
+  mutate(wave = "Wave 1")
+
+wave2_negative_codes <- wave2 |>
+  select(all_of(wave2_planned_names)) |>
+  pivot_longer(everything(), names_to = "variable", values_to = "value") |>
+  filter(value < 0) |>
+  count(variable, name = "negative_codes") |>
+  mutate(wave = "Wave 2")
+
+wave3_negative_codes <- wave3 |>
+  select(all_of(wave3_planned_names)) |>
+  pivot_longer(everything(), names_to = "variable", values_to = "value") |>
+  filter(value < 0) |>
+  count(variable, name = "negative_codes") |>
+  mutate(wave = "Wave 3")
+
+negative_code_table <- bind_rows(
+  wave1_negative_codes,
+  wave2_negative_codes,
+  wave3_negative_codes
+)
+
+kable(negative_code_table)
+```
+
+Further coding checks should compare each cleaned variable with its permitted range. Scores should not be used for modelling until their ranges and direction have been confirmed.
+
+02_clean.R: apply agreed cleaning rules and create a saved analysis dataset;
+03_descriptive.R: produce tables and figures without fitting hypothesis
+models;
+04_modelling.R: fit the longitudinal model 
+05_diagnostics.R: examine model assumptions and influential observations;
+06_sensitivity.R: compare complete-case, missing-data, and alternative
+specification results.
+
+## cleaning, descriptive, modelling, diagnostic, and sensitivity functions.
+
+```{r}
+id_variables <- c("NCDSID", "BCSID", "NSID", "MCSID")
+
+planned_constructs <- list(
+  depression_items = paste0("GAD2PHQ2_", 3:4),
+  anxiety_items = paste0("GAD2PHQ2_", 1:2),
+  loneliness_items = paste0("LONELY_", 1:4),
+  life_satisfaction = "SATN",
+  social_contact = paste0("SCON", 1:5),
+  social_support = c("SOCPROV_1", "SOCPROV_2", "SOCPROV_3", "SICK", "LISTEN"),
+  financial_strain = c("FINANCIALMANB", "FINANCIALMAND")
+)
+
+wave_variable <- function(wave, suffix) {
+  paste0("CW", wave, "_", suffix)
+}
+
+# depression, anxiety, loneliness, social contact, social support, life satisfaction, sex, cohort, and financial variables are present across waves.
+
+```
+
+
