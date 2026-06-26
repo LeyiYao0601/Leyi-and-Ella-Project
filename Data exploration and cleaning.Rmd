@@ -1,5 +1,5 @@
 ---
-title: "Data exploration and cleaning for COVID-19 Cohort Waves 1-3"
+title: "01_Data_cleaning"
 output: html_document
 date: "2026-06-14"
 ---
@@ -11,6 +11,14 @@ knitr::opts_chunk$set(echo = TRUE)
 This rmd audits the structure and data quality of the three UCL COVID-19 survey wave files：
 Wave 1 took place in May 2020. Wave 2 took place in September and October 2020. Wave 3 took place in February and March 2021. Wave 2 and Wave 3 store the completion day and month in separate variables.
 
+01_data_cleaning.Rmd`:
+- reads Waves 1-3 using relative paths
+- creates a cross-cohort `participant_id`
+- recodes documented negative missing-value codes to `NA`
+- creates provisional scores for depression, anxiety, loneliness, social
+  contact, social support, and life satisfaction
+- validates score ranges and duplicate participant-wave records
+- writes `data/processed/analysis_long.rds`
 
 ##Read datasets and library
 
@@ -248,8 +256,7 @@ construct_table <- data.frame(
     "Loneliness items",
     "Life satisfaction",
     "Social contact",
-    "Social support",
-    "Financial strain"
+    "Social support"
   ),
   Wave_1 = c(
     "CW1_GAD2PHQ2_3, CW1_GAD2PHQ2_4",
@@ -257,8 +264,7 @@ construct_table <- data.frame(
     "CW1_LONELY_1 to CW1_LONELY_4",
     "CW1_SATN",
     "CW1_SCON1 to CW1_SCON5",
-    "CW1_SOCPROV_1 to CW1_SOCPROV_3, CW1_SICK, CW1_LISTEN",
-    "CW1_FINANCIALMANB, CW1_FINANCIALMAND"
+    "CW1_SOCPROV_1 to CW1_SOCPROV_3, CW1_SICK, CW1_LISTEN"
   ),
   Wave_2 = c(
     "CW2_GAD2PHQ2_3, CW2_GAD2PHQ2_4",
@@ -266,8 +272,7 @@ construct_table <- data.frame(
     "CW2_LONELY_1 to CW2_LONELY_4",
     "CW2_SATN",
     "CW2_SCON1 to CW2_SCON5",
-    "CW2_SOCPROV_1 to CW2_SOCPROV_3, CW2_SICK, CW2_LISTEN",
-    "CW2_FINANCIALMANB, CW2_FINANCIALMAND"
+    "CW2_SOCPROV_1 to CW2_SOCPROV_3, CW2_SICK, CW2_LISTEN"
   ),
   Wave_3 = c(
     "CW3_GAD2PHQ2_3, CW3_GAD2PHQ2_4",
@@ -275,8 +280,7 @@ construct_table <- data.frame(
     "CW3_LONELY_1 to CW3_LONELY_4",
     "CW3_SATN",
     "CW3_SCON1 to CW3_SCON5",
-    "CW3_SOCPROV_1 to CW3_SOCPROV_3, CW3_SICK, CW3_LISTEN",
-    "CW3_FINANCIALMANB, CW3_FINANCIALMAND"
+    "CW3_SOCPROV_1 to CW3_SOCPROV_3, CW3_SICK, CW3_LISTEN"
   )
 )
 
@@ -321,8 +325,6 @@ wave1_analysis <- wave1 |>
     support_when_sick = remove_special_codes(CW1_SICK),
     support_for_listening = remove_special_codes(CW1_LISTEN),
     life_satisfaction = remove_special_codes(CW1_SATN),
-    financial_management = remove_special_codes(CW1_FINANCIALMANB),
-    financial_change = remove_special_codes(CW1_FINANCIALMAND),
     sex_code = remove_special_codes(CW1_PSEX),
     cohort_code = remove_special_codes(CW1_COHORT)
   )
@@ -352,8 +354,6 @@ wave2_analysis <- wave2 |>
     support_when_sick = remove_special_codes(CW2_SICK),
     support_for_listening = remove_special_codes(CW2_LISTEN),
     life_satisfaction = remove_special_codes(CW2_SATN),
-    financial_management = remove_special_codes(CW2_FINANCIALMANB),
-    financial_change = remove_special_codes(CW2_FINANCIALMAND),
     sex_code = remove_special_codes(CW2_PSEX),
     cohort_code = remove_special_codes(CW2_COHORT)
   )
@@ -383,8 +383,6 @@ wave3_analysis <- wave3 |>
     support_when_sick = remove_special_codes(CW3_SICK),
     support_for_listening = remove_special_codes(CW3_LISTEN),
     life_satisfaction = remove_special_codes(CW3_SATN),
-    financial_management = remove_special_codes(CW3_FINANCIALMANB),
-    financial_change = remove_special_codes(CW3_FINANCIALMAND),
     sex_code = remove_special_codes(CW3_PSEX),
     cohort_code = remove_special_codes(CW3_COHORT)
   )
@@ -414,9 +412,7 @@ wave1_analysis <- wave1_analysis |>
     social_contact_score = (6 - contact_item1) + (6 - contact_item2) +
       (6 - contact_item3) + (6 - contact_item4) + (6 - contact_item5),
     social_support_score = (4 - support_item1) + (4 - support_item2) +
-      support_item3,
-    financial_strain_before = financial_management,
-    financial_strain_change = 6 - financial_change
+      support_item3
   )
 
 wave2_analysis <- wave2_analysis |>
@@ -438,9 +434,7 @@ wave2_analysis <- wave2_analysis |>
     social_contact_score = (6 - contact_item1) + (6 - contact_item2) +
       (6 - contact_item3) + (6 - contact_item4) + (6 - contact_item5),
     social_support_score = (4 - support_item1) + (4 - support_item2) +
-      support_item3,
-     financial_strain_before = financial_management,
-    financial_strain_change = 6 - financial_change
+      support_item3
   )
 
 wave3_analysis <- wave3_analysis |>
@@ -462,9 +456,7 @@ wave3_analysis <- wave3_analysis |>
     social_contact_score = (6 - contact_item1) + (6 - contact_item2) +
       (6 - contact_item3) + (6 - contact_item4) + (6 - contact_item5),
     social_support_score = (4 - support_item1) + (4 - support_item2) +
-      support_item3,
-    financial_strain_before = financial_management,
-    financial_strain_change = 6 - financial_change
+      support_item3
   )
 ```
 
@@ -663,7 +655,7 @@ kable(duplicate_table)
 
 #Missingness
 Missingness is examined after negative special codes have been changed to NA. The table below focuses on variables relevant to the planned analysis.
-####support and financial have big missingness
+####support have big missingness
 -single imputation? if thats only around 3% (e-resources Mice)
 - some of them need multiple imputation?
 predict with other variable disturbation of other variables 
@@ -686,8 +678,6 @@ missing_data <- analysis_long |>
     support_when_sick,
     support_for_listening,
     life_satisfaction,
-    financial_management,
-    financial_change,
     depression_score,
     anxiety_score,
     loneliness_score,
@@ -763,49 +753,6 @@ support_indicator_availability <- analysis_long |>
 
 kable(support_indicator_availability, digits = 1)
 
-#Also, financial_strain_before is missing for: Wave 1: 4.1%; Wave 2: 57.8%; Wave 3: 80.6% --> financial_strain_change has better coverage
-financial_strain_check <- analysis_long |>
-  group_by(wave) |>
-  summarise(
-    total_n = n(),
-    observed_n = sum(!is.na(financial_strain_change)),
-    missing_n = sum(is.na(financial_strain_change)),
-    missing_percent = 100 * missing_n / total_n,
-    mean = mean(financial_strain_change, na.rm = TRUE),
-    median = median(financial_strain_change, na.rm = TRUE),
-    minimum = min(financial_strain_change, na.rm = TRUE),
-    maximum = max(financial_strain_change, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-kable(financial_strain_check, digits = 1)
-
-analysis_long <- analysis_long |>
-  mutate(
-    financial_strain_category = factor(
-      financial_strain_change,
-      levels = 1:5,
-      labels = c(
-        "Much better off",
-        "A little better off",
-        "About the same",
-        "A little worse off",
-        "Much worse off"
-      ),
-      ordered = TRUE
-    )
-  )
-
-financial_strain_table <- analysis_long |>
-  count(wave, financial_strain_category, .drop = FALSE) |>
-  group_by(wave) |>
-  mutate(
-    percent = 100 * n / sum(n)
-  ) |>
-  ungroup()
-
-kable(financial_strain_table, digits = 1)
-#Financial strain was operationalised using reported financial change compared with before the COVID-19 outbreak. Higher values indicate becoming financially worse off. The pre-COVID financial-management variable was not selected because it had substantial missingness in Waves 2 and 3.
 ```
 
 
@@ -818,8 +765,7 @@ wave1_planned_names <- c(
   "CW1_LONELY_1", "CW1_LONELY_2", "CW1_LONELY_3", "CW1_LONELY_4",
   "CW1_SCON1", "CW1_SCON2", "CW1_SCON3", "CW1_SCON4", "CW1_SCON5",
   "CW1_SOCPROV_1", "CW1_SOCPROV_2", "CW1_SOCPROV_3",
-  "CW1_SICK", "CW1_LISTEN", "CW1_SATN",
-  "CW1_FINANCIALMANB", "CW1_FINANCIALMAND"
+  "CW1_SICK", "CW1_LISTEN", "CW1_SATN"
 )
 
 wave2_planned_names <- sub("CW1_", "CW2_", wave1_planned_names)
@@ -887,8 +833,6 @@ stopifnot(all(is.na(analysis_long$social_contact_score) |
   analysis_long$social_contact_score %in% 5:25))
 stopifnot(all(is.na(analysis_long$social_support_score) |
   analysis_long$social_support_score %in% 3:9))
-stopifnot(all(is.na(analysis_long$financial_strain_change) |
-        analysis_long$financial_strain_change %in% 1:5))
 stopifnot(!any(analysis_long$depression_item1 < 0, na.rm = TRUE))
 stopifnot(!any(analysis_long$loneliness_item1 < 0, na.rm = TRUE))
 stopifnot(
@@ -903,13 +847,7 @@ stopifnot(
         analysis_long$anxiety_item2 %in% 1:4),
 
   all(is.na(analysis_long$loneliness_item1) |
-        analysis_long$loneliness_item1 %in% 1:3),
-
-  all(is.na(analysis_long$financial_change) |
-        analysis_long$financial_change %in% 1:5),
-
-  all(is.na(analysis_long$financial_strain_change) |
-        analysis_long$financial_strain_change %in% 1:5)
+        analysis_long$loneliness_item1 %in% 1:3)
 )
 ```
 

@@ -30,7 +30,6 @@ H4: Social support may moderate the loneliness-depression association, such
 that the association between loneliness and depressive symptoms is weaker among
 people reporting stronger social support.
 
-
 #Read This Repository In Order
 1. analysis/01_data_cleaning.Rmd reads the raw files from data/raw/, creates
 participant keys, recodes documented missing-value codes, creates provisional
