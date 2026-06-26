@@ -1,0 +1,18 @@
+---
+title: "02_data_exploration.Rmd"
+output: html_document
+date: "2026-06-26"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+02_data_exploration.Rmd`:
+- reads `data/processed/analysis_long.rds`
+- reports dataset structure and participation patterns
+- summarises score distributions
+- explores missingness overall and for social support by cohort
+- reports how many rows would remain under listwise deletion
+- explicitly states that a listwise-deleted analysis dataset is not created
+- saves descriptive figures in `figures/`
