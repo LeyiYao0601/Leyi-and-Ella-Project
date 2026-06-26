@@ -47,3 +47,9 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+#so the dataset wont be on my github or it can be *. data extension
+/data 
+
+
+
