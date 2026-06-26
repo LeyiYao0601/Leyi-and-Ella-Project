@@ -1,0 +1,423 @@
+---
+title: "01_Data_cleaning"
+output: html_document
+date: "2026-06-14"
+---
+
+This R Markdown file reads the restricted UCL COVID-19 survey Waves 1-3,creates a reproducible participant-wave dataset, recodes documented missing codes, validates the cleaned variables, and writes a local cleaned dataset for `02_data_exploration.Rmd`. It does not analyse the substantive hypotheses.
+
+Wave 1 took place in May 2020. Wave 2 took place in September and October 2020. Wave 3 took place in February and March 2021. Wave 2 and Wave 3 store the completion day and month in separate variables.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Read datasets and libraries
+
+```{r}
+library(tidyverse)
+library(haven)
+library(readxl)
+library(knitr)
+
+raw_data_folder <- file.path("data", "raw")
+
+wave1 <- read_dta(file.path(raw_data_folder, "covid-19_wave1_survey_cls.dta"))
+wave2 <- read_dta(file.path(raw_data_folder, "covid-19_wave2_survey_cls.dta"))
+wave3 <- read_dta(file.path(raw_data_folder, "covid-19_wave3_survey_cls.dta"))
+
+variable_lookup <- read_excel(
+  file.path(raw_data_folder, "covid-19_w1-3_variable_lookup.xlsx")
+)
+
+```
+
+# Dataset Structure
+
+```{r file-summary}
+file_summary <- data.frame(
+  wave = c("Wave 1", "Wave 2", "Wave 3"),
+  rows = c(nrow(wave1), nrow(wave2), nrow(wave3)),
+  columns = c(ncol(wave1), ncol(wave2), ncol(wave3))
+)
+
+kable(file_summary)
+# The current data are stored as separate wave-specific files. Each file is wide within wave: one row per participant response and many wave-prefixed variables.
+```
+# Participant Identifiers
+The study combines several birth cohorts. The identifier used depends on the participant's cohort:
+NCDSID identifies NCDS participants.
+BCSID identifies BCS70 participants.
+NSID identifies Next Steps participants.
+MCS cohort members are identified using MCSID and CNUM00. 
+MCS parents are identified using MCSID and PNUM00.
+Blank character values are treated as missing in the following counts.
+```{r}
+blank_to_na <- function(x) {
+  x <- trimws(as.character(x))
+  x[x == ""] <- NA_character_
+  x
+}
+
+has_value <- function(x) {
+  !is.na(blank_to_na(x))
+}
+
+remove_special_codes <- function(x) {
+  x <- as.numeric(x)
+  x[x < 0] <- NA_real_
+  x
+}
+
+identifier_table <- data.frame(
+  wave = rep(c("Wave 1", "Wave 2", "Wave 3"), each = 4),
+  id_variable = rep(c("NCDSID", "BCSID", "NSID", "MCSID"), times = 3),
+  non_missing = c(
+   sum(has_value(wave1$NCDSID)),
+    sum(has_value(wave1$BCSID)),
+    sum(has_value(wave1$NSID)),
+    sum(has_value(wave1$MCSID)),
+    sum(has_value(wave2$NCDSID)),
+    sum(has_value(wave2$BCSID)),
+    sum(has_value(wave2$NSID)),
+    sum(has_value(wave2$MCSID)),
+    sum(has_value(wave3$NCDSID)),
+    sum(has_value(wave3$BCSID)),
+    sum(has_value(wave3$NSID)),
+    sum(has_value(wave3$MCSID))
+  ),
+  unique_non_missing = c(
+    n_distinct(blank_to_na(wave1$NCDSID), na.rm = TRUE),
+    n_distinct(blank_to_na(wave1$BCSID), na.rm = TRUE),
+    n_distinct(blank_to_na(wave1$NSID), na.rm = TRUE),
+    n_distinct(blank_to_na(wave1$MCSID), na.rm = TRUE),
+    n_distinct(blank_to_na(wave2$NCDSID), na.rm = TRUE),
+    n_distinct(blank_to_na(wave2$BCSID), na.rm = TRUE),
+    n_distinct(blank_to_na(wave2$NSID), na.rm = TRUE),
+    n_distinct(blank_to_na(wave2$MCSID), na.rm = TRUE),
+    n_distinct(blank_to_na(wave3$NCDSID), na.rm = TRUE),
+    n_distinct(blank_to_na(wave3$BCSID), na.rm = TRUE),
+    n_distinct(blank_to_na(wave3$NSID), na.rm = TRUE),
+    n_distinct(blank_to_na(wave3$MCSID), na.rm = TRUE)
+  )
+)
+
+kable(identifier_table)
+```
+###A temporary participant key is created in memory for audit purposes. The cohort name is included to prevent the same number in different cohorts being treated as the same person. MCS uses both household ID and person number
+
+```{r}
+wave1 <- wave1 |>
+  mutate(
+     participant_id = case_when(
+      CW1_COHORT == 1 & has_value(NCDSID) ~ paste0("NCDS_", blank_to_na(NCDSID)),
+      CW1_COHORT == 2 & has_value(BCSID) ~ paste0("BCS_", blank_to_na(BCSID)),
+      CW1_COHORT == 3 & has_value(NSID) ~ paste0("NS_", blank_to_na(NSID)),
+      CW1_COHORT == 4 & has_value(MCSID) & has_value(CW1_CNUM00) ~
+        paste0("MCS_CM_", blank_to_na(MCSID), "_", blank_to_na(CW1_CNUM00)),
+      CW1_COHORT == 5 & has_value(MCSID) & has_value(CW1_PNUM00) ~
+        paste0("MCS_PARENT_", blank_to_na(MCSID), "_", blank_to_na(CW1_PNUM00)),
+      TRUE ~ NA_character_
+    )
+  )
+
+wave2 <- wave2 |>
+  mutate(
+    participant_id = case_when(
+      CW2_COHORT == 1 & has_value(NCDSID) ~ paste0("NCDS_", blank_to_na(NCDSID)),
+      CW2_COHORT == 2 & has_value(BCSID) ~ paste0("BCS_", blank_to_na(BCSID)),
+      CW2_COHORT == 3 & has_value(NSID) ~ paste0("NS_", blank_to_na(NSID)),
+      CW2_COHORT == 4 & has_value(MCSID) & has_value(CW2_CNUM00) ~
+        paste0("MCS_CM_", blank_to_na(MCSID), "_", blank_to_na(CW2_CNUM00)),
+      CW2_COHORT == 5 & has_value(MCSID) & has_value(CW2_PNUM00) ~
+        paste0("MCS_PARENT_", blank_to_na(MCSID), "_", blank_to_na(CW2_PNUM00)),
+      TRUE ~ NA_character_
+    )
+  )
+
+wave3 <- wave3 |>
+  mutate(
+    participant_id = case_when(
+      CW3_COHORT == 1 & has_value(NCDSID) ~ paste0("NCDS_", blank_to_na(NCDSID)),
+      CW3_COHORT == 2 & has_value(BCSID) ~ paste0("BCS_", blank_to_na(BCSID)),
+      CW3_COHORT == 3 & has_value(NSID) ~ paste0("NS_", blank_to_na(NSID)),
+      CW3_COHORT == 4 & has_value(MCSID) & has_value(CW3_CNUM00) ~
+        paste0("MCS_CM_", blank_to_na(MCSID), "_", blank_to_na(CW3_CNUM00)),
+      CW3_COHORT == 5 & has_value(MCSID) & has_value(CW3_PNUM00) ~
+        paste0("MCS_PARENT_", blank_to_na(MCSID), "_", blank_to_na(CW3_PNUM00)),
+      TRUE ~ NA_character_
+    )
+  )
+```
+
+#Planned Variables and Constructs
+```{r}
+construct_table <- data.frame(
+  construct = c(
+    "Depression items",
+    "Anxiety items",
+    "Loneliness items",
+    "Life satisfaction",
+    "Social contact",
+    "Social support"
+  ),
+  Wave_1 = c(
+    "CW1_GAD2PHQ2_3, CW1_GAD2PHQ2_4",
+    "CW1_GAD2PHQ2_1, CW1_GAD2PHQ2_2",
+    "CW1_LONELY_1 to CW1_LONELY_4",
+    "CW1_SATN",
+    "CW1_SCON1 to CW1_SCON5",
+    "CW1_SOCPROV_1 to CW1_SOCPROV_3, CW1_SICK, CW1_LISTEN"
+  ),
+  Wave_2 = c(
+    "CW2_GAD2PHQ2_3, CW2_GAD2PHQ2_4",
+    "CW2_GAD2PHQ2_1, CW2_GAD2PHQ2_2",
+    "CW2_LONELY_1 to CW2_LONELY_4",
+    "CW2_SATN",
+    "CW2_SCON1 to CW2_SCON5",
+    "CW2_SOCPROV_1 to CW2_SOCPROV_3, CW2_SICK, CW2_LISTEN"
+  ),
+  Wave_3 = c(
+    "CW3_GAD2PHQ2_3, CW3_GAD2PHQ2_4",
+    "CW3_GAD2PHQ2_1, CW3_GAD2PHQ2_2",
+    "CW3_LONELY_1 to CW3_LONELY_4",
+    "CW3_SATN",
+    "CW3_SCON1 to CW3_SCON5",
+    "CW3_SOCPROV_1 to CW3_SOCPROV_3, CW3_SICK, CW3_LISTEN"
+  )
+)
+
+kable(construct_table)
+```
+# Cleaning the planned variables
+The data dictionaries show that negative values are special codes rather than real responses:
+-1 means not applicable.
+-8 means no information or do not know.
+-9 means does not want to answer.
+The small function below changes any negative code to NA. Positive responses are kept unchanged.
+
+The variables are now selected and renamed one wave at a time. This repetition is intentional so that the source of each variable remains visible.
+```{r}
+wave1_analysis <- wave1 |>
+  transmute(
+    participant_id = participant_id,
+    wave = "Wave 1",
+    wave_number = 1,
+    depression_item1 = remove_special_codes(CW1_GAD2PHQ2_3),
+    depression_item2 = remove_special_codes(CW1_GAD2PHQ2_4),
+    anxiety_item1 = remove_special_codes(CW1_GAD2PHQ2_1),
+    anxiety_item2 = remove_special_codes(CW1_GAD2PHQ2_2),
+    loneliness_item1 = remove_special_codes(CW1_LONELY_1),
+    loneliness_item2 = remove_special_codes(CW1_LONELY_2),
+    loneliness_item3 = remove_special_codes(CW1_LONELY_3),
+    loneliness_item4 = remove_special_codes(CW1_LONELY_4),
+    contact_item1 = remove_special_codes(CW1_SCON1),
+    contact_item2 = remove_special_codes(CW1_SCON2),
+    contact_item3 = remove_special_codes(CW1_SCON3),
+    contact_item4 = remove_special_codes(CW1_SCON4),
+    contact_item5 = remove_special_codes(CW1_SCON5),
+    support_item1 = remove_special_codes(CW1_SOCPROV_1),
+    support_item2 = remove_special_codes(CW1_SOCPROV_2),
+    support_item3 = remove_special_codes(CW1_SOCPROV_3),
+    support_when_sick = remove_special_codes(CW1_SICK),
+    support_for_listening = remove_special_codes(CW1_LISTEN),
+    life_satisfaction = remove_special_codes(CW1_SATN),
+    sex_code = remove_special_codes(CW1_PSEX),
+    cohort_code = remove_special_codes(CW1_COHORT)
+  )
+```
+
+```{r}
+wave2_analysis <- wave2 |>
+  transmute(
+    participant_id = participant_id,
+    wave = "Wave 2",
+    wave_number = 2,
+    depression_item1 = remove_special_codes(CW2_GAD2PHQ2_3),
+    depression_item2 = remove_special_codes(CW2_GAD2PHQ2_4),
+    anxiety_item1 = remove_special_codes(CW2_GAD2PHQ2_1),
+    anxiety_item2 = remove_special_codes(CW2_GAD2PHQ2_2),
+    loneliness_item1 = remove_special_codes(CW2_LONELY_1),
+    loneliness_item2 = remove_special_codes(CW2_LONELY_2),
+    loneliness_item3 = remove_special_codes(CW2_LONELY_3),
+    loneliness_item4 = remove_special_codes(CW2_LONELY_4),
+    contact_item1 = remove_special_codes(CW2_SCON1),
+    contact_item2 = remove_special_codes(CW2_SCON2),
+    contact_item3 = remove_special_codes(CW2_SCON3),
+    contact_item4 = remove_special_codes(CW2_SCON4),
+    contact_item5 = remove_special_codes(CW2_SCON5),
+    support_item1 = remove_special_codes(CW2_SOCPROV_1),
+    support_item2 = remove_special_codes(CW2_SOCPROV_2),
+    support_item3 = remove_special_codes(CW2_SOCPROV_3),
+    support_when_sick = remove_special_codes(CW2_SICK),
+    support_for_listening = remove_special_codes(CW2_LISTEN),
+    life_satisfaction = remove_special_codes(CW2_SATN),
+    sex_code = remove_special_codes(CW2_PSEX),
+    cohort_code = remove_special_codes(CW2_COHORT)
+  )
+```
+
+```{r}
+wave3_analysis <- wave3 |>
+  transmute(
+    participant_id = participant_id,
+    wave = "Wave 3",
+    wave_number = 3,
+    depression_item1 = remove_special_codes(CW3_GAD2PHQ2_3),
+    depression_item2 = remove_special_codes(CW3_GAD2PHQ2_4),
+    anxiety_item1 = remove_special_codes(CW3_GAD2PHQ2_1),
+    anxiety_item2 = remove_special_codes(CW3_GAD2PHQ2_2),
+    loneliness_item1 = remove_special_codes(CW3_LONELY_1),
+    loneliness_item2 = remove_special_codes(CW3_LONELY_2),
+    loneliness_item3 = remove_special_codes(CW3_LONELY_3),
+    loneliness_item4 = remove_special_codes(CW3_LONELY_4),
+    contact_item1 = remove_special_codes(CW3_SCON1),
+    contact_item2 = remove_special_codes(CW3_SCON2),
+    contact_item3 = remove_special_codes(CW3_SCON3),
+    contact_item4 = remove_special_codes(CW3_SCON4),
+    contact_item5 = remove_special_codes(CW3_SCON5),
+    support_item1 = remove_special_codes(CW3_SOCPROV_1),
+    support_item2 = remove_special_codes(CW3_SOCPROV_2),
+    support_item3 = remove_special_codes(CW3_SOCPROV_3),
+    support_when_sick = remove_special_codes(CW3_SICK),
+    support_for_listening = remove_special_codes(CW3_LISTEN),
+    life_satisfaction = remove_special_codes(CW3_SATN),
+    sex_code = remove_special_codes(CW3_PSEX),
+    cohort_code = remove_special_codes(CW3_COHORT)
+  )
+```
+
+# Provisional scale scores
+The PHQ-2 and GAD-2 responses are stored as 1 to 4. Subtracting 1 converts each item to the conventional 0 to 3 range.
+The contact items are stored as 1 = every day and 5 = never. Subtracting each item from 6 makes a higher score represent more frequent contact.
+For the three Social Provisions items, the first two are positively worded and the third is negatively worded. They are recoded so that a higher total represents more perceived support. SICK and LISTEN are kept as separate support indicators because they use a different response scale.
+```{r}
+score_wave <- function(data) {
+  data |>
+    mutate(
+      cohort = factor(
+        cohort_code,
+        levels = 1:6,
+        labels = c(
+          "NCDS",
+          "BCS70",
+          "Next Steps",
+          "MCS cohort member",
+          "MCS parent",
+          "NSHD" #The dictionaries include 6 = NSHD, although no NSHD rows occur in these files. Just for completeness to have NSHD here
+        )
+      ),
+      sex = factor(sex_code, levels = c(1, 2), labels = c("Male", "Female")),
+      depression_score = (depression_item1 - 1) + (depression_item2 - 1),
+      anxiety_score = (anxiety_item1 - 1) + (anxiety_item2 - 1),
+      loneliness_score = loneliness_item1 + loneliness_item2 +
+        loneliness_item3 + loneliness_item4,
+      social_contact_score = (6 - contact_item1) + (6 - contact_item2) +
+        (6 - contact_item3) + (6 - contact_item4) + (6 - contact_item5),
+      social_support_score = (4 - support_item1) + (4 - support_item2) +
+        support_item3
+    )
+}
+
+wave1_analysis <- score_wave(wave1_analysis)
+wave2_analysis <- score_wave(wave2_analysis)
+wave3_analysis <- score_wave(wave3_analysis)
+
+```
+
+# Combine Waves
+```{r}
+analysis_long <- bind_rows(
+  wave1_analysis,
+  wave2_analysis,
+  wave3_analysis
+) |>
+  arrange(participant_id, wave_number)
+
+
+kable(
+  data.frame(
+    rows = nrow(analysis_long),
+    participants = n_distinct(analysis_long$participant_id),
+    waves = n_distinct(analysis_long$wave)
+  )
+)
+
+```
+
+# Coding and range validation
+The negative values observed in the original files are documented missing-value codes. This table counts them in the planned item variables before cleaning.
+```{r}
+wave1_planned_names <- c(
+  "CW1_GAD2PHQ2_1", "CW1_GAD2PHQ2_2",
+  "CW1_GAD2PHQ2_3", "CW1_GAD2PHQ2_4",
+  "CW1_LONELY_1", "CW1_LONELY_2", "CW1_LONELY_3", "CW1_LONELY_4",
+  "CW1_SCON1", "CW1_SCON2", "CW1_SCON3", "CW1_SCON4", "CW1_SCON5",
+  "CW1_SOCPROV_1", "CW1_SOCPROV_2", "CW1_SOCPROV_3",
+  "CW1_SICK", "CW1_LISTEN", "CW1_SATN"
+)
+
+wave2_planned_names <- sub("CW1_", "CW2_", wave1_planned_names)
+wave3_planned_names <- sub("CW1_", "CW3_", wave1_planned_names)
+
+count_negative_codes <- function(data, variable_names, wave_label) {
+  data |>
+    select(all_of(variable_names)) |>
+    mutate(across(everything(), as.numeric)) |>
+    pivot_longer(
+      cols = everything(),
+      names_to = "variable",
+      values_to = "value"
+    ) |>
+    filter(value < 0) |>
+    count(variable, name = "negative_codes") |>
+    mutate(wave = wave_label, .before = 1)
+}
+
+negative_code_table <- bind_rows(
+  count_negative_codes(wave1, wave1_planned_names, "Wave 1"),
+  count_negative_codes(wave2, wave2_planned_names, "Wave 2"),
+  count_negative_codes(wave3, wave3_planned_names, "Wave 3")
+)
+
+kable(negative_code_table)
+```
+
+
+# Validate the cleaned dataset
+```{r}
+stopifnot(nrow(analysis_long) == nrow(wave1) + nrow(wave2) + nrow(wave3))
+stopifnot(all(analysis_long$wave %in% c("Wave 1", "Wave 2", "Wave 3")))
+stopifnot(!any(is.na(analysis_long$participant_id)))
+stopifnot(!any(duplicated(analysis_long[c("participant_id", "wave")])))
+
+stopifnot(all(is.na(analysis_long$depression_score) |
+  analysis_long$depression_score %in% 0:6))
+stopifnot(all(is.na(analysis_long$anxiety_score) |
+  analysis_long$anxiety_score %in% 0:6))
+stopifnot(all(is.na(analysis_long$loneliness_score) |
+  analysis_long$loneliness_score %in% 4:12))
+stopifnot(all(is.na(analysis_long$social_contact_score) |
+  analysis_long$social_contact_score %in% 5:25))
+stopifnot(all(is.na(analysis_long$social_support_score) |
+  analysis_long$social_support_score %in% 3:9))
+
+stopifnot(
+  all(is.na(analysis_long$depression_item1) |
+        analysis_long$depression_item1 %in% 1:4),
+  all(is.na(analysis_long$depression_item2) |
+        analysis_long$depression_item2 %in% 1:4),
+
+  all(is.na(analysis_long$anxiety_item1) |
+        analysis_long$anxiety_item1 %in% 1:4),
+  all(is.na(analysis_long$anxiety_item2) |
+        analysis_long$anxiety_item2 %in% 1:4),
+
+  all(is.na(analysis_long$loneliness_item1) |
+        analysis_long$loneliness_item1 %in% 1:3)
+)
+```
+
+
+
+
