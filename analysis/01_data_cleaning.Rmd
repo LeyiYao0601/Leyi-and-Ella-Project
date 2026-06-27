@@ -434,12 +434,12 @@ kable(validation_table)
 ```
 # Saved Cleaned Dataset
 ```{r}
-processed_data_folder <- file.path("data", "processed")
+processed_data_folder <- file.path("..", "data", "processed")
 cleaned_data_path <- file.path(processed_data_folder, "analysis_long.rds")
 saveRDS(analysis_long, cleaned_data_path)
 
 cleaning_receipt <- data.frame(
-  output = "data/processed/analysis_long.rds",
+  output = "analysis/data/processed/analysis_long.rds",
   rows = nrow(analysis_long),
   participants = n_distinct(analysis_long$participant_id),
   waves = n_distinct(analysis_long$wave)

@@ -1,2 +1,2 @@
 output,rows,participants,waves
-data/processed/analysis_long.rds,67518,33046,3
+analysis/data/processed/analysis_long.rds,67518,33046,3
