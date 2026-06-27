@@ -4,15 +4,360 @@ output: html_document
 date: "2026-06-26"
 ---
 
+This R Markdown file reads the cleaned dataset from `01_data_cleaning.Rmd` （`data/processed/analysis_long.rds`）and
+explores structure, participation patterns, missingness, and descriptive score
+distributions. It does not analyse the hypotheses.
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-02_data_exploration.Rmd`:
-- reads `data/processed/analysis_long.rds`
-- reports dataset structure and participation patterns
-- summarises score distributions
-- explores missingness overall and for social support by cohort
-- reports how many rows would remain under listwise deletion
-- explicitly states that a listwise-deleted analysis dataset is not created
-- saves descriptive figures in `figures/`
+# Read datasets and libraries
+```{r load-packages}
+library(tidyverse)
+library(knitr)
+```
+
+```{r}
+processed_data_folder <- file.path("data", "processed")
+figure_folder <- file.path("figures")
+analysis_long <- readRDS(cleaned_data_path)
+```
+
+# Participation Patterns And Attrition
+```{r}
+participation <- analysis_long |>
+  distinct(participant_id, wave_number) |>
+  mutate(observed = TRUE) |>
+  pivot_wider(
+    names_from = wave_number,
+    values_from = observed,
+    names_prefix = "wave",
+    values_fill = FALSE
+  ) |>
+  mutate(
+    participation_pattern = paste0(
+      as.integer(wave1),
+      as.integer(wave2),
+      as.integer(wave3)
+    )
+  )
+
+attrition_table <- participation |>
+  count(participation_pattern, name = "participants") |>
+  arrange(participation_pattern)
+
+kable(attrition_table)
+
+#The pattern 111 means that the key appears in all three files. The pattern 100 means Wave 1 only, while 011 means Waves 2 and 3 only.
+```
+# Outcome Distributions
+```{r}
+score_data <- analysis_long |>
+  select(
+    wave,
+    depression_score,
+    anxiety_score,
+    loneliness_score,
+    social_contact_score,
+    social_support_score,
+    life_satisfaction
+  ) |>
+  pivot_longer(
+    cols = -wave,
+    names_to = "variable",
+    values_to = "value"
+  )
+
+outcome_summary <- score_data |>
+  group_by(wave, variable) |>
+  summarise(
+    n = sum(!is.na(value)),
+    missing_n = sum(is.na(value)),
+    mean = mean(value, na.rm = TRUE),
+    standard_deviation = sd(value, na.rm = TRUE),
+    minimum = min(value, na.rm = TRUE),
+    p25 = quantile(value, 0.25, na.rm = TRUE),
+    median = median(value, na.rm = TRUE),
+    p75 = quantile(value, 0.75, na.rm = TRUE),
+    maximum = max(value, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+kable(outcome_summary, digits = 2)
+
+```
+
+# Time-Varying and Time-Invariant Variables
+```{r}
+time_invariant_check <- analysis_long |>
+  group_by(participant_id) |>
+  summarise(
+    n_sex_values = n_distinct(sex, na.rm = TRUE),
+    n_cohort_values = n_distinct(cohort, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  summarise(
+    participants = n(),
+    sex_changes_or_conflicts = sum(n_sex_values > 1),
+    cohort_changes_or_conflicts = sum(n_cohort_values > 1)
+  )
+
+kable(time_invariant_check)
+```
+
+#Duplicate observations
+Duplicate checks use the temporary cross-cohort participant key. A duplicate row here means that the same key appears more than once within one wave file.
+```{r}
+duplicate_table <- analysis_long |>
+  count(wave, participant_id) |>
+  group_by(wave) |>
+  summarise(
+    duplicate_rows = sum(n - 1),
+    duplicate_ids = sum(n > 1),
+    .groups = "drop"
+  )
+
+kable(duplicate_table)
+```
+
+#Missingness
+Missingness is examined after negative special codes have been changed to NA. The table below focuses on variables relevant to the planned analysis.
+####support have big missingness
+-single imputation? if thats only around 3% (e-resources Mice)
+- some of them need multiple imputation?
+predict with other variable disturbation of other variables 
+
+```{r}
+missing_data <- analysis_long |>
+  select(
+    wave,
+    depression_item1,
+    depression_item2,
+    anxiety_item1,
+    anxiety_item2,
+    loneliness_item1,
+    loneliness_item2,
+    loneliness_item3,
+    loneliness_item4,
+    support_item1,
+    support_item2,
+    support_item3,
+    support_when_sick,
+    support_for_listening,
+    life_satisfaction,
+    depression_score,
+    anxiety_score,
+    loneliness_score,
+    social_contact_score,
+    social_support_score
+  ) |>
+  pivot_longer(
+    cols = -wave,
+    names_to = "variable",
+    values_to = "value"
+  )
+
+missingness_table <- missing_data |>
+  group_by(wave, variable) |>
+  summarise(
+    total_n = n(),
+    missing_n = sum(is.na(value)),
+    missing_percent = 100 * missing_n / total_n,
+    .groups = "drop"
+  ) |>
+  arrange(wave, desc(missing_percent))
+
+kable(missingness_table, digits = 1)
+
+missingness_figure <- missingness_table |>
+  ggplot(
+    aes(
+      x = wave,
+      y = missing_percent,
+      fill = wave
+    )
+  ) +
+  geom_col() +
+  facet_wrap(~ variable, scales = "free_y", ncol = 3) +
+  labs(
+    title = "Missingness in planned analysis variables",
+    x = NULL,
+    y = "Missing records (%)"
+  ) +
+  guides(fill = "none") +
+  theme_minimal(base_size = 11)
+missingness_figure
+ggsave(
+  filename = file.path(figure_folder, "missingness_figure.png"),
+  plot = missingness_figure,
+  width = 9,
+  height = 7,
+  dpi = 300
+)
+
+# Social-support missingness is much higher than for the mental-health scores.
+# Breaking it down by cohort helps identify whether questionnaire routing or cohort eligibility is responsible.
+
+support_missingness_by_cohort <- analysis_long |>
+  group_by(wave, cohort) |>
+  summarise(
+    total_records = n(),
+    observed_support = sum(!is.na(social_support_score)),
+    missing_support = sum(is.na(social_support_score)),
+    missing_percent = 100 * missing_support / total_records,
+    .groups = "drop"
+  )
+
+kable(support_missingness_by_cohort, digits = 1)
+##structural questionnaire routing, not ordinary missing data (not gonna impute NCDS or BCS70)
+#--> exploratory for Use support_when_sick, which has coverage across all cohorts.
+
+# The two additional support indicators have different routing patterns. This table shows their coverage without combining them into the three-item score.
+
+support_indicator_availability <- analysis_long |>
+  group_by(wave, cohort) |>
+  summarise(
+    total_records = n(),
+    sick_observed = sum(!is.na(support_when_sick)),
+    sick_missing_percent = 100 * mean(is.na(support_when_sick)),
+    listen_observed = sum(!is.na(support_for_listening)),
+    listen_missing_percent = 100 * mean(is.na(support_for_listening)),
+    .groups = "drop"
+  )
+
+kable(support_indicator_availability, digits = 1)
+
+```
+
+# Listwise Deletion Check
+This table acknowledges how much data would be lost if the planned model used
+complete cases only. It does not create a listwise-deleted dataset. A later
+mixed-effects model should use maximum likelihood estimation so available
+participant-wave records can contribute under the model assumptions.
+```{r}
+planned_model_variables <- c(
+  "depression_score",
+  "loneliness_score",
+  "social_support_score",
+  "sex",
+  "cohort"
+)
+
+complete_case_rows <- analysis_long |>
+  select(all_of(planned_model_variables)) |>
+  drop_na() |>
+  nrow()
+
+listwise_deletion_table <- data.frame(
+  item = c(
+    "Rows before complete-case filtering",
+    "Rows that would remain after listwise deletion",
+    "Current project decision",
+    "Future modelling decision"
+  ),
+  value = c(
+    as.character(nrow(analysis_long)),
+    as.character(complete_case_rows),
+    "Do not create a listwise-deleted dataset here",
+    "Use maximum likelihood estimation in the mixed-effects model"
+  )
+)
+
+kable(listwise_deletion_table)
+```
+
+# Descriptive Figures
+
+```{r}
+all_score_histograms <- ggplot(score_data, aes(x = value)) +
+  geom_histogram(binwidth = 1, colour = "white", fill = "#3B82A0") +
+  facet_grid(variable ~ wave, scales = "free") +
+  labs(
+    x = "Score",
+    y = "Number of responses"
+  ) +
+  theme_minimal()
+all_score_histograms 
+
+depression_histogram <- analysis_long |>
+  filter(!is.na(depression_score)) |>
+  ggplot(aes(x = depression_score)) +
+  geom_histogram(
+    binwidth = 1,
+    boundary = -0.5,
+    colour = "white",
+    fill = "#2F6B84"
+  ) +
+  facet_wrap(~ wave, nrow = 1) +
+  scale_x_continuous(breaks = 0:6) +
+  labs(
+    title = "Distribution of provisional PHQ-2 scores",
+    x = "PHQ-2 score",
+    y = "Number of response records"
+  ) +
+  theme_minimal(base_size = 12)
+depression_histogram
+ggsave(
+  filename = file.path(figure_folder, "depression_histogram.png"),
+  plot = depression_histogram,
+  width = 8,
+  height = 4,
+  dpi = 300
+)
+
+loneliness_histogram <- analysis_long |>
+  filter(!is.na(loneliness_score)) |>
+  ggplot(aes(x = loneliness_score)) +
+  geom_histogram(
+    binwidth = 1,
+    boundary = 3.5,
+    colour = "white",
+    fill = "#B05A47"
+  ) +
+  facet_wrap(~ wave, nrow = 1) +
+  scale_x_continuous(breaks = 4:12) +
+  labs(
+    title = "Distribution of four-item loneliness scores",
+    x = "Loneliness score",
+    y = "Number of response records"
+  ) +
+  theme_minimal(base_size = 12)
+loneliness_histogram
+ggsave(
+  filename = file.path(figure_folder, "loneliness_histogram.png"),
+  plot = loneliness_histogram,
+  width = 8,
+  height = 4,
+  dpi = 300
+)
+
+score_boxplots <- score_data |>
+  filter(
+    !is.na(value),
+    variable %in% c(
+      "depression_score",
+      "anxiety_score",
+      "loneliness_score",
+      "social_support_score"
+    )
+  ) |>
+  ggplot(aes(x = wave, y = value, fill = wave)) +
+  geom_boxplot(outlier.alpha = 0.15) +
+  facet_wrap(~ variable, scales = "free_y", ncol = 2) +
+  labs(
+    title = "Score distributions by wave",
+    x = NULL,
+    y = "Score"
+  ) +
+  guides(fill = "none") +
+  theme_minimal(base_size = 12)
+score_boxplots 
+ggsave(
+  filename = file.path(figure_folder, "score_boxplots.png"),
+  plot = score_boxplots,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+```

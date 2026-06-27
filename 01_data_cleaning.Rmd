@@ -323,7 +323,7 @@ wave3_analysis <- score_wave(wave3_analysis)
 
 ```
 
-# Combine Waves
+# Combine Waves & Data Structure
 
 ```{r}
 analysis_long <- bind_rows(
@@ -338,7 +338,9 @@ kable(
   data.frame(
     rows = nrow(analysis_long),
     participants = n_distinct(analysis_long$participant_id),
-    waves = n_distinct(analysis_long$wave)
+    waves = n_distinct(analysis_long$wave),
+    earliest_wave = min(analysis_long$wave_number, na.rm = TRUE),
+  latest_wave = max(analysis_long$wave_number, na.rm = TRUE)
   )
 )
 
