@@ -20,7 +20,7 @@ library(haven)
 library(readxl)
 library(knitr)
 
-raw_data_folder <- file.path("data", "raw")
+raw_data_folder <- file.path("..", "data", "raw")
 
 wave1 <- read_dta(file.path(raw_data_folder, "covid-19_wave1_survey_cls.dta"))
 wave2 <- read_dta(file.path(raw_data_folder, "covid-19_wave2_survey_cls.dta"))
