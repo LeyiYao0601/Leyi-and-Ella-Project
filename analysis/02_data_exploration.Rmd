@@ -20,7 +20,7 @@ library(knitr)
 
 ```{r}
 processed_data_folder <- file.path("..", "data", "processed")
-figure_folder <- file.path("figures")
+figure_folder <- file.path("..", "figures")
 cleaned_data_path <- file.path(processed_data_folder, "analysis_long.rds")
 analysis_long <- readRDS(cleaned_data_path)
 ```

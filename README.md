@@ -58,6 +58,7 @@ stronger social support.
 Leyi-and-Ella-Project/
 ├── Leyi-and-Ella-Project.Rproj
 ├── README.md
+├── .gitignore
 ├── analysis/
 │   ├── 01_data_cleaning.Rmd
 │   └── 02_data_exploration.Rmd
@@ -70,4 +71,7 @@ Leyi-and-Ella-Project/
 │   └── processed/
 │       └── analysis_long.rds
 └── figures
+    ├── depression_histogram.png
+    ├── loneliness_histogram.png
+    └── score_boxplots.png
 └── outputs 
