@@ -44,14 +44,11 @@ file_summary <- data.frame(
 kable(file_summary)
 # The current data are stored as separate wave-specific files. Each file is wide within wave: one row per participant response and many wave-prefixed variables.
 ```
+
 # Participant Identifiers
-The study combines several birth cohorts. The identifier used depends on the participant's cohort:
-NCDSID identifies NCDS participants.
-BCSID identifies BCS70 participants.
-NSID identifies Next Steps participants.
-MCS cohort members are identified using MCSID and CNUM00. 
-MCS parents are identified using MCSID and PNUM00.
-Blank character values are treated as missing in the following counts.
+
+The study combines several birth cohorts. The identifier used depends on the participant's cohort: NCDSID identifies NCDS participants. BCSID identifies BCS70 participants. NSID identifies Next Steps participants. MCS cohort members are identified using MCSID and CNUM00. MCS parents are identified using MCSID and PNUM00. Blank character values are treated as missing in the following counts.
+
 ```{r}
 blank_to_na <- function(x) {
   x <- trimws(as.character(x))
@@ -104,6 +101,7 @@ identifier_table <- data.frame(
 
 kable(identifier_table)
 ```
+
 ###A temporary participant key is created in memory for audit purposes. The cohort name is included to prevent the same number in different cohorts being treated as the same person. MCS uses both household ID and person number
 
 ```{r}
@@ -151,6 +149,7 @@ wave3 <- wave3 |>
 ```
 
 #Planned Variables and Constructs
+
 ```{r}
 construct_table <- data.frame(
   construct = c(
@@ -189,14 +188,13 @@ construct_table <- data.frame(
 
 kable(construct_table)
 ```
+
 # Cleaning the planned variables
-The data dictionaries show that negative values are special codes rather than real responses:
--1 means not applicable.
--8 means no information or do not know.
--9 means does not want to answer.
-The small function below changes any negative code to NA. Positive responses are kept unchanged.
+
+The data dictionaries show that negative values are special codes rather than real responses: -1 means not applicable. -8 means no information or do not know. -9 means does not want to answer. The small function below changes any negative code to NA. Positive responses are kept unchanged.
 
 The variables are now selected and renamed one wave at a time. This repetition is intentional so that the source of each variable remains visible.
+
 ```{r}
 wave1_analysis <- wave1 |>
   transmute(
@@ -288,9 +286,9 @@ wave3_analysis <- wave3 |>
 ```
 
 # Provisional scale scores
-The PHQ-2 and GAD-2 responses are stored as 1 to 4. Subtracting 1 converts each item to the conventional 0 to 3 range.
-The contact items are stored as 1 = every day and 5 = never. Subtracting each item from 6 makes a higher score represent more frequent contact.
-For the three Social Provisions items, the first two are positively worded and the third is negatively worded. They are recoded so that a higher total represents more perceived support. SICK and LISTEN are kept as separate support indicators because they use a different response scale.
+
+The PHQ-2 and GAD-2 responses are stored as 1 to 4. Subtracting 1 converts each item to the conventional 0 to 3 range. The contact items are stored as 1 = every day and 5 = never. Subtracting each item from 6 makes a higher score represent more frequent contact. For the three Social Provisions items, the first two are positively worded and the third is negatively worded. They are recoded so that a higher total represents more perceived support. SICK and LISTEN are kept as separate support indicators because they use a different response scale.
+
 ```{r}
 score_wave <- function(data) {
   data |>
@@ -326,6 +324,7 @@ wave3_analysis <- score_wave(wave3_analysis)
 ```
 
 # Combine Waves
+
 ```{r}
 analysis_long <- bind_rows(
   wave1_analysis,
@@ -346,7 +345,9 @@ kable(
 ```
 
 # Coding and range validation
+
 The negative values observed in the original files are documented missing-value codes. This table counts them in the planned item variables before cleaning.
+
 ```{r}
 wave1_planned_names <- c(
   "CW1_GAD2PHQ2_1", "CW1_GAD2PHQ2_2",
@@ -383,8 +384,8 @@ negative_code_table <- bind_rows(
 kable(negative_code_table)
 ```
 
+# Validate the cleaned datasets
 
-# Validate the cleaned dataset
 ```{r}
 stopifnot(nrow(analysis_long) == nrow(wave1) + nrow(wave2) + nrow(wave3))
 stopifnot(all(analysis_long$wave %in% c("Wave 1", "Wave 2", "Wave 3")))
@@ -416,8 +417,37 @@ stopifnot(
   all(is.na(analysis_long$loneliness_item1) |
         analysis_long$loneliness_item1 %in% 1:3)
 )
+
+validation_table <- data.frame(
+  check = c(
+    "Rows match raw wave files",
+    "No missing participant IDs",
+    "No duplicate participant-wave records",
+    "Score ranges are valid"
+  ),
+  passed = TRUE
+)
+
+kable(validation_table)
 ```
+# Saved Cleaned Dataset
+```{r}
+processed_data_folder <- file.path("data", "processed")
+cleaned_data_path <- file.path(processed_data_folder, "analysis_long.rds")
+saveRDS(analysis_long, cleaned_data_path)
 
+cleaning_receipt <- data.frame(
+  output = "data/processed/analysis_long.rds",
+  rows = nrow(analysis_long),
+  participants = n_distinct(analysis_long$participant_id),
+  waves = n_distinct(analysis_long$wave)
+)
 
+write_csv(
+  cleaning_receipt,
+  file.path(processed_data_folder, "cleaning_receipt.csv")
+)
 
+kable(cleaning_receipt)
+```
 
