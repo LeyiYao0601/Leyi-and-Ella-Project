@@ -16,16 +16,16 @@ The UCL COVID-19 survey followed participants across three pandemic
 waves. Wave 1 took place in May 2020, Wave 2 in September/October 2020,
 and Wave 3 in February/March 2021 during the third UK lockdown.
 
-This report examines whether depressive symptoms changed across the
+This report examined whether depressive symptoms changed across the
 three waves, and whether loneliness and perceived social support were
 associated with depressive symptoms over time.
 
 # Hypotheses
 
-H1: Depressive symptoms will differ across waves, with higher depressive
+H1: Depressive symptoms will differ across the timepoints, with higher depressive
 symptoms expected at Wave 3 compared with Wave 1.
 
-H2: Higher loneliness will be associated with higher depressive symptoms
+H2: Greater loneliness scores will be associated with higher depressive symptoms
 across waves.
 
 H3: Lower perceived social support will be associated with higher
@@ -37,14 +37,14 @@ weaker among people reporting stronger social support.
 
 # Analysis Strategy
 
-A multilevel model was used because the dataset contains repeated
+A multilevel model was used, because the original dataset contains repeated
 observations from the same participants across waves.
 
 The final multilevel model was specified as:
 
 `depression_score ~ wave + loneliness_c * social_support_c + sex + cohort + (1 | participant_id)`
 
-In this formula, `(1 | participant_id)` represents a random intercept
+In this equation, `(1 | participant_id)` represents a random intercept
 for each participant. The interaction term
 `loneliness_c * social_support_c` includes the main effects of
 loneliness and social support, as well as their interaction.
@@ -103,8 +103,8 @@ symptoms.
 Estimated marginal means showed that depressive symptoms were lowest at
 Wave 2 and highest at Wave 3.
 
-Wave 1 estimated mean = 1.31\
-Wave 2 estimated mean = 1.22\
+Wave 1 estimated mean = 1.31
+Wave 2 estimated mean = 1.22
 Wave 3 estimated mean = 1.35
 
 Pairwise comparisons indicated that Wave 3 scores were significantly
@@ -117,8 +117,8 @@ The moderation check showed that the association between loneliness and
 depressive symptoms was strongest at lower social support and weakest at
 higher social support.
 
-Low social support: b = 0.335\
-Average social support: b = 0.318\
+Low social support: b = 0.335
+Average social support: b = 0.318
 High social support: b = 0.301
 
 This indicates that loneliness remained positively associated with
@@ -142,7 +142,7 @@ knitr::include_graphics("../figures/loneliness_social_support_interaction.png")
 
 # Conclusion
 
-The findings supported all four hypotheses. Depressive symptoms changed
+All hypotheses were supported by the findings. Depressive symptoms changed
 across waves and were significantly higher at Wave 3 than Wave 1. Higher
 loneliness was associated with higher depressive symptoms, while higher
 social support was associated with lower depressive symptoms. Social
