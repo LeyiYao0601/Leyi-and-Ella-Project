@@ -1,0 +1,150 @@
+---
+title: "Analysis Report"
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
+# Background And Research Question
+
+The UCL COVID-19 survey followed participants across three pandemic
+waves. Wave 1 took place in May 2020, Wave 2 in September/October 2020,
+and Wave 3 in February/March 2021 during the third UK lockdown.
+
+This report examines whether depressive symptoms changed across the
+three waves, and whether loneliness and perceived social support were
+associated with depressive symptoms over time.
+
+# Hypotheses
+
+H1: Depressive symptoms will differ across waves, with higher depressive
+symptoms expected at Wave 3 compared with Wave 1.
+
+H2: Higher loneliness will be associated with higher depressive symptoms
+across waves.
+
+H3: Lower perceived social support will be associated with higher
+depressive symptoms across waves.
+
+H4: Social support may moderate the loneliness-depression association,
+such that the association between loneliness and depressive symptoms is
+weaker among people reporting stronger social support.
+
+# Analysis Strategy
+
+A multilevel model was used because the dataset contains repeated
+observations from the same participants across waves.
+
+The final multilevel model was specified as:
+
+`depression_score ~ wave + loneliness_c * social_support_c + sex + cohort + (1 | participant_id)`
+
+In this formula, `(1 | participant_id)` represents a random intercept
+for each participant. The interaction term
+`loneliness_c * social_support_c` includes the main effects of
+loneliness and social support, as well as their interaction.
+
+The final modelling dataset included 26,437 participant-wave
+observations from 13,371 participants. This was smaller than the full
+cleaned dataset because rows with missing values in any model variable
+were excluded from the multilevel models.
+
+# Null Model And ICC
+
+The null model estimated the extent to which depressive symptoms
+clustered within participants. The between-participant variance was
+1.512 and the residual variance was 0.996.
+
+The intraclass correlation coefficient (ICC) was 0.603, indicating that
+approximately 60.3% of the variance in depressive symptoms was
+attributable to differences between participants. This supported the use
+of a mixed-effects model.
+
+# Model Comparison
+
+Models were built incrementally. Model 1 included wave, sex, and cohort.
+Model 2 added loneliness and social support. Model 3 added the
+interaction between loneliness and social support.
+
+Model comparison showed that each step improved model fit. Adding wave,
+sex, and cohort improved fit compared with the null model, χ²(5) =
+1702.48, p \< .001. Adding loneliness and social support further
+improved fit, χ²(2) = 7551.91, p \< .001. Adding the loneliness by
+social support interaction also improved fit, χ²(1) = 34.49, p \< .001.
+Model 3 was therefore retained as the final hypothesis-testing model.
+
+# Final Model Results
+
+Depressive symptoms differed significantly across waves. Compared with
+Wave 1, depressive symptoms were significantly lower at Wave 2, b =
+-0.092, p \< .001, and significantly higher at Wave 3, b = 0.041, p =
+.013. This supports H1, although the increase from Wave 1 to Wave 3 was
+small.
+
+Loneliness was positively associated with depressive symptoms, b =
+0.318, p \< .001. This supports H2.
+
+Social support was negatively associated with depressive symptoms, b =
+-0.131, p \< .001. This supports H3, indicating that higher perceived
+social support was associated with lower depressive symptoms.
+
+The loneliness by social support interaction was significant, b =
+-0.015, p \< .001. This supports H4, suggesting that social support
+slightly weakened the association between loneliness and depressive
+symptoms.
+
+# Wave Comparisons
+
+Estimated marginal means showed that depressive symptoms were lowest at
+Wave 2 and highest at Wave 3.
+
+Wave 1 estimated mean = 1.31\
+Wave 2 estimated mean = 1.22\
+Wave 3 estimated mean = 1.35
+
+Pairwise comparisons indicated that Wave 3 scores were significantly
+higher than Wave 1 scores, supporting the prediction that depressive
+symptoms would be higher during the third UK lockdown.
+
+# Moderation Interpretation
+
+The moderation check showed that the association between loneliness and
+depressive symptoms was strongest at lower social support and weakest at
+higher social support.
+
+Low social support: b = 0.335\
+Average social support: b = 0.318\
+High social support: b = 0.301
+
+This indicates that loneliness remained positively associated with
+depressive symptoms at all levels of social support, but the association
+was slightly weaker among participants reporting stronger social
+support.
+
+# Figures
+
+## Estimated Depressive Symptoms Across Waves
+
+```{r wave-figure, out.width="85%", fig.align="center"}
+knitr::include_graphics("../figures/model_estimated_depression_by_wave.png")
+```
+
+## Loneliness And Depressive Symptoms By Social Support
+
+```{r moderation-figure, out.width="85%", fig.align="center"}
+knitr::include_graphics("../figures/loneliness_social_support_interaction.png")
+```
+
+# Conclusion
+
+The findings supported all four hypotheses. Depressive symptoms changed
+across waves and were significantly higher at Wave 3 than Wave 1. Higher
+loneliness was associated with higher depressive symptoms, while higher
+social support was associated with lower depressive symptoms. Social
+support also moderated the loneliness-depression association, although
+the moderation effect was small.
