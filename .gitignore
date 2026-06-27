@@ -52,7 +52,6 @@ rsconnect/
 data/raw/*
 data/processed/analysis_long.rds
 data/processed/cleaning_receipt.csv
-figures/*.png
 .DS_Store
 data/.DS_Store
 
