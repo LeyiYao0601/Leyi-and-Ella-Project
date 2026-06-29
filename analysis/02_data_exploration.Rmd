@@ -87,6 +87,9 @@ outcome_summary <- score_data |>
 
 kable(outcome_summary, digits = 2)
 
+#Descriptive patterns: 1, Depression score Slightly higher at Wave 3; 2, Anxiety score Slight increase over time; 3, Loneliness score Slight higher at Wave 3;  4, Social contact score Lower at Wave 3; 5, Social support score High average support, but large missingness; 6, Life satisfaction Lower at Wave 3
+
+#Overall, Wave 3 appears especially important for the project question: depressive symptoms and loneliness are slightly higher, while life satisfaction and social contact are lower.
 ```
 
 # Time-Varying and Time-Invariant Variables
@@ -124,7 +127,7 @@ kable(duplicate_table)
 
 #Missingness
 Missingness is examined after negative special codes have been changed to NA. The table below focuses on variables relevant to the planned analysis.
-####support have big missingness
+
 -single imputation? if thats only around 3% (e-resources Mice)
 - some of them need multiple imputation?
 predict with other variable disturbation of other variables 
