@@ -12,6 +12,27 @@ Wave 1 took place in May 2020. Wave 2 took place in September and October 2020. 
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+Data Cleaning Summary
+The cleaning stage creates a long-format dataset with one row per participant per observed wave. 
+(Output: data/processed/analysis_long.rds)
+
+Main cleaning decisions:
+1, A cohort-specific participant ID was created so that the same person could be linked across waves.
+2, Negative values were treated as missing values because the data dictionary defines them as special missing codes.
+3, Depression and anxiety items were recoded from 1-4 to 0-3 before summing, giving PHQ-2 and GAD-2 scores from 0-6.
+4, Loneliness was summed across four items, giving a provisional range from 4-12.
+5, Social contact items were reverse-coded so higher scores represent more frequent contact.
+6, The three Social Provisions items were combined so higher scores represent more perceived support.
+7, support_when_sick and support_for_listening were kept as separate support indicators because they use a different response scale.
+
+Validation Checks
+Before saving the cleaned dataset, the script checks that:
+- row counts match the original raw wave files;
+- participant IDs are not missing;
+- there are no duplicate participant-wave records;
+- depression, anxiety, loneliness, social contact, and social support scores fall within expected ranges.
+
+
 # Read datasets and libraries
 
 ```{r}
