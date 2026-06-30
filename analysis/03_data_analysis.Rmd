@@ -1,0 +1,339 @@
+---
+title: "03_data_analysis"
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+This R Markdown file reads the dataset from `01_data_cleaning.Rmd`
+(`data/processed/analysis_long.rds`) and tests whether depressive
+symptoms changed across waves, and whether loneliness, social support,
+and their interaction are associated with depressive symptoms over time.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Read datasets and libraries
+
+```{r load-packages}
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+library(emmeans)
+library(knitr)
+```
+
+```{r}
+processed_data_folder <- file.path("..", "data", "processed")
+cleaned_data_path <- file.path(processed_data_folder, "analysis_long.rds")
+analysis_long <- readRDS(cleaned_data_path)
+```
+
+# Research Questions And Hypotheses
+
+```{r}
+hypothesis_table <- data.frame(
+  hypothesis = c("H1", "H2", "H3", "H4"),
+  test = c(
+    "Depressive symptoms differ across waves, with Wave 3 expected to be higher than Wave 1",
+    "Higher loneliness is associated with higher depressive symptoms",
+    "Lower perceived social support is associated with higher depressive symptoms",
+    "Social support moderates the loneliness-depression association"
+  ),
+  model_term = c(
+    "wave",
+    "loneliness_c",
+    "social_support_c",
+    "loneliness_c:social_support_c"
+  )
+)
+
+kable(hypothesis_table)
+```
+
+# Prepare Data
+
+The mixed-effects models use participant-wave records. Wave is treated
+as a categorical variable. Loneliness and social support are
+mean-centred to make the main effects and interaction easier to
+interpret.
+
+```{r}
+model_data <- analysis_long |>
+  mutate(
+    wave = factor(wave, levels = c("Wave 1", "Wave 2", "Wave 3")),
+    loneliness_c = as.numeric(scale(loneliness_score, center = TRUE, scale = FALSE)),
+    social_support_c = as.numeric(scale(social_support_score, center = TRUE, scale = FALSE))
+  ) |>
+  select(
+    participant_id,
+    depression_score,
+    wave,
+    loneliness_c,
+    social_support_c,
+    sex,
+    cohort
+  ) |>
+  drop_na()
+
+model_sample_table <- data.frame(
+  rows_in_cleaned_data = nrow(analysis_long),
+  rows_in_model_data = nrow(model_data),
+  participants_in_model_data = n_distinct(model_data$participant_id)
+)
+
+kable(model_sample_table)
+```
+
+# Random-Intercept Null Model
+
+The null model contains only a random intercept for participant. This
+checks whether depressive symptoms cluster within participants across
+waves.
+
+```{r}
+null_model <- lmer(
+  depression_score ~ 1 + (1 | participant_id),
+  data = model_data,
+  REML = FALSE
+)
+
+summary(null_model)
+```
+
+# Intraclass Correlation
+
+The ICC estimates how much of the variation in depressive symptoms is
+due to differences between participants.
+
+```{r}
+variance_components <- as.data.frame(VarCorr(null_model))
+
+between_participant_variance <- variance_components |>
+  filter(grp == "participant_id") |>
+  pull(vcov)
+
+residual_variance <- variance_components |>
+  filter(grp == "Residual") |>
+  pull(vcov)
+
+icc_value <- between_participant_variance /
+  (between_participant_variance + residual_variance)
+
+icc_table <- data.frame(
+  between_participant_variance = between_participant_variance,
+  residual_variance = residual_variance,
+  icc = icc_value
+)
+
+kable(icc_table, digits = 3)
+```
+
+# Build Mixed-Effects Models
+
+Models are built incrementally. Model 1 tests wave differences. Model 2
+adds loneliness and social support. Model 3 adds the loneliness by
+social support interaction.
+
+```{r}
+model_1 <- lmer(
+  depression_score ~ wave + sex + cohort + (1 | participant_id),
+  data = model_data,
+  REML = FALSE
+)
+
+model_2 <- lmer(
+  depression_score ~ wave + loneliness_c + social_support_c + sex + cohort +
+    (1 | participant_id),
+  data = model_data,
+  REML = FALSE
+)
+
+model_3 <- lmer(
+  depression_score ~ wave + loneliness_c * social_support_c + sex + cohort +
+    (1 | participant_id),
+  data = model_data,
+  REML = FALSE
+)
+```
+
+# Compare Model Fit
+
+The deviance tests compare whether each model improves fit compared with
+the previous model.
+
+```{r}
+model_comparison <- anova(null_model, model_1, model_2, model_3)
+
+kable(model_comparison, digits = 3)
+```
+
+# Final Model Results
+
+Model 3 is the main hypothesis-testing model. The wave terms test H1,
+loneliness tests H2, social support tests H3, and the interaction tests
+H4.
+
+```{r}
+summary(model_3)
+```
+
+# Wave Comparisons
+
+Estimated marginal means are used to compare depressive symptoms across
+waves, including the key comparison between Wave 1 and Wave 3.
+
+```{r}
+wave_comparisons <- emmeans(model_3, pairwise ~ wave)
+
+wave_comparisons
+```
+
+# Moderation Check
+
+This checks whether the association between loneliness and depression
+differs at lower, average, and higher levels of social support.
+
+```{r}
+support_sd <- sd(model_data$social_support_c, na.rm = TRUE)
+
+moderation_check <- emtrends(
+  model_3,
+  ~ social_support_c,
+  var = "loneliness_c",
+  at = list(social_support_c = c(-support_sd, 0, support_sd))
+)
+
+moderation_check
+```
+
+# Estimation Checks
+
+This section checks whether the final model produced a singular fit. A
+singular fit can mean that the random-effects structure is too complex
+for the data.
+
+```{r}
+estimation_check <- data.frame(
+  model = "model_3",
+  singular_fit = isSingular(model_3)
+)
+
+kable(estimation_check)
+```
+
+# Model Figures
+
+The first figure shows model-estimated depressive symptoms across the
+three survey waves. This visualises the wave effect tested in the final
+mixed-effects model.
+
+```{r}
+wave_emmeans <- as.data.frame(emmeans(model_3, ~ wave))
+
+wave_plot <- ggplot(wave_emmeans, aes(x = wave, y = emmean, group = 1)) +
+  geom_line(colour = "#2F6B84", linewidth = 1) +
+  geom_point(colour = "#2F6B84", size = 3) +
+  geom_errorbar(
+    aes(ymin = asymp.LCL, ymax = asymp.UCL),
+    width = 0.1,
+    colour = "#2F6B84"
+  ) +
+  labs(
+    title = "Estimated depressive symptoms across waves",
+    x = "Survey wave",
+    y = "Estimated depression score"
+  ) +
+  theme_minimal(base_size = 12)
+
+wave_plot
+
+ggsave(
+  filename = file.path("..", "figures", "model_estimated_depression_by_wave.png"),
+  plot = wave_plot,
+  width = 7,
+  height = 4,
+  dpi = 300
+)
+```
+
+The second figure shows the predicted association between loneliness and
+depressive symptoms at lower, average, and higher levels of social
+support. This visualises the interaction tested in the final
+mixed-effects model.
+
+```{r}
+support_sd <- sd(model_data$social_support_c, na.rm = TRUE)
+
+model_frame <- model.frame(model_3)
+
+prediction_data <- expand.grid(
+  loneliness_c = seq(
+    min(model_data$loneliness_c, na.rm = TRUE),
+    max(model_data$loneliness_c, na.rm = TRUE),
+    length.out = 100
+  ),
+  social_support_c = c(-support_sd, 0, support_sd)
+)
+
+prediction_data <- prediction_data |>
+  mutate(
+    wave = factor("Wave 1", levels = levels(model_frame$wave)),
+    sex = factor(levels(model_frame$sex)[1], levels = levels(model_frame$sex)),
+    cohort = factor(levels(model_frame$cohort)[1], levels = levels(model_frame$cohort)),
+    support_level = factor(
+      social_support_c,
+      levels = c(-support_sd, 0, support_sd),
+      labels = c("Low social support", "Average social support", "High social support")
+    )
+  )
+
+prediction_data$predicted_depression <- predict(
+  model_3,
+  newdata = prediction_data,
+  re.form = NA,
+  allow.new.levels = TRUE
+)
+
+moderation_plot <- ggplot(
+  prediction_data,
+  aes(x = loneliness_c, y = predicted_depression, colour = support_level)
+) +
+  geom_line(linewidth = 1) +
+  labs(
+    title = "Loneliness and depressive symptoms by social support",
+    x = "Loneliness score, mean-centred",
+    y = "Predicted depression score",
+    colour = "Social support"
+  ) +
+  theme_minimal(base_size = 12)
+
+moderation_plot
+
+ggsave(
+  filename = file.path("..", "figures", "loneliness_social_support_interaction.png"),
+  plot = moderation_plot,
+  width = 7,
+  height = 4,
+  dpi = 300
+)
+```
+
+# Save Model Outputs
+
+This section saves the main model tables to the `outputs/` folder so
+they can be reused in the final report.
+
+```{r}
+output_folder <- file.path("..", "outputs")
+
+dir.create(output_folder, showWarnings = FALSE)
+
+write_csv(model_sample_table, file.path(output_folder, "model_sample_table.csv"))
+write_csv(icc_table, file.path(output_folder, "icc_table.csv"))
+write_csv(as.data.frame(model_comparison), file.path(output_folder, "model_comparison.csv"))
+write_csv(as.data.frame(wave_comparisons$contrasts), file.path(output_folder, "wave_comparisons.csv"))
+write_csv(as.data.frame(moderation_check), file.path(output_folder, "moderation_check.csv"))
+```
